@@ -22,3 +22,4 @@
 Для начала нужно установить библиотеки:
 ``pip install -r requirements.txt ``
 Запустить файл setup.py
+Подробнее на сайте: https://www.safe-life-site.ru/
