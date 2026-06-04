@@ -1,7 +1,10 @@
 import sys
 import os
+
+from keyring import get_password
 sys.path.append(os.path.abspath('../src'))
 
+import src.encryption
 from src.log_in import LogIn
 from src.db import DataBase
 from src.generation_keys import Keys
@@ -35,7 +38,7 @@ class API:
         return DataBase().retrieve_data_passwords()
     
     #Вызов функции создания таблицы паролей
-    def add_password_api(self, name:str=None, name_sit:str=None, login:str=None, mail:bytes=None, password:bytes=None):
+    def add_password_api(self, name:str=None, name_sit:bytes=None, login:bytes=None, mail:bytes=None, password:bytes=None):
         return DataBase.create_passwords_db(self, name, name_sit, login, mail, password)
     
     #Вызов функции обновления таблицы паролей
