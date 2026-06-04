@@ -29,8 +29,8 @@ class DataBase:
             cursor.execute("""CREATE TABLE IF NOT EXISTS password(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
-                name_sit TEXT,
-                login TEXT,
+                name_sit BLOOB,
+                login BLOOB,
                 mail BLOB,
                 password BLOB NOT NULL);
             """)
