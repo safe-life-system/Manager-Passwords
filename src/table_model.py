@@ -66,9 +66,10 @@ class PasswordsTabel(QAbstractTableModel):
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
         if role == Qt.ItemDataRole.EditRole:
             self._data[index.row()][index.column()] = value
-            self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole])
-            if type(self._data[index.row()][-1]) != bytes:
-                self._data[index.row()][-1] = API.encryption_data_api(self, self._data[index.row()][-1], API.get_password_cache_api(self, "PASSWORD_LOG_IN"))
+            self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole]) 
+            for row_index in range(len(self._data[index.row()])):
+                if type(self._data[index.row()][row_index]) != bytes and row_index != 0:
+                    self._data[index.row()][row_index] = API.encryption_data_api(self, self._data[index.row()][row_index], API.get_password_cache_api(self, "PASSWORD_LOG_IN"))
             API.uptade_password_api(self, id=self._data[index.row()][0], name=self._data[index.row()][1], name_sit=self._data[index.row()][2], login=self._data[index.row()][3], mail=self._data[index.row()][4], password=self._data[index.row()][-1])
             return True
         return False
