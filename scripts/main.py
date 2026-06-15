@@ -1,7 +1,7 @@
 from src.auth_window_ui import Ui_AuthWindow
 #from src.main_window_interface import Ui_MainWindow
 from src.password_manager_ui_pure import Ui_MainWindow
-from src.dialog_add_password_interface import Ui_Add_password
+from src.add_password_dialog_ui import Ui_DialogAddPassword
 from src.dialog_csv_import_interface import Ui_Dialog
 from src.dialog_csv_export_interface import Export_Ui_Dialog
 from PySide6.QtWidgets import QMainWindow, QDialog, QFileDialog, QCheckBox
@@ -98,7 +98,7 @@ class MainWindow(Ui_MainWindow, QMainWindow):
     #Открытие диалогового окна
     @Slot()
     def open_dialog_add_password(self):
-        dialog_window = DialogAddPassword()
+        dialog_window = DialogAddPassword(self)
         dialog_window.saved_table_passwords.connect(self.update_table)
         dialog_window.exec()
     
@@ -141,49 +141,36 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         
 
 #Диалоговое окно добавления пароля
-class DialogAddPassword(Ui_Add_password, QDialog):
+class DialogAddPassword(Ui_DialogAddPassword, QDialog):
     #Сигнал сохранения записи в базе данных
     saved_table_passwords = Signal(bool)
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         
         self.setupUi(self)
-        self.len_password.hide()
-        self.gen_password.hide()
-        try:
-            self.buttonBox.accepted.disconnect()
-        except TypeError:
-            pass
-        self.buttonBox.accepted.connect(self.required_fields_validator)
-        self.gen_check.checkStateChanged.connect(self.check_gen_checkbox)
-        self.gen_password.clicked.connect(self.generation_password)
+        self.generate_password.toggled.connect(self.set_generator_controls_visible)
+        self.ok_button.clicked.connect(self.required_fields_validator)
+        self.button_generate_password.clicked.connect(self.generation_password)
+        self.cancel_button.clicked.connect(self.reject)
     
     #Валидатор обязательных полей
     @Slot()
     def required_fields_validator(self):
-        if not self.password_input.text().split():
-            self.password_input.setStyleSheet("border: 1px solid red;")
+        if not self.password.text().split():
+            self.password.setStyleSheet("border: 1px solid red;")
         else:
-            enc_password_input = API.encryption_data_api(self, self.password_input.text(), API.get_password_cache_api(self, "PASSWORD_LOG_IN"))
-            enc_email_input = API.encryption_data_api(self, self.email_input.text(), API.get_password_cache_api(self, "PASSWORD_LOG_IN"))
-            API.add_password_api(self, self.name_input.text(), self.sit_input.text(), self.login_input.text(), enc_email_input, enc_password_input)
+            enc_password_input = API.encryption_data_api(self, self.password.text(), API.get_password_cache_api(self, "PASSWORD_LOG_IN"))
+            enc_email_input = API.encryption_data_api(self, self.email.text(), API.get_password_cache_api(self, "PASSWORD_LOG_IN"))
+            API.add_password_api(self, self.name_data_entry.text(), self.site.text(), self.login.text(), enc_email_input, enc_password_input)
             self.saved_table_passwords.emit(True)
             self.accept()
             self.saved_table_passwords.emit(False)
     
-    def check_gen_checkbox(self, state):
-        if state == Qt.CheckState.Checked:
-            self.len_password.show()
-            self.gen_password.show()
-        else:
-            self.len_password.hide()
-            self.gen_password.hide()
-    
     def generation_password(self):
-        gen_password = API.generation_password_api(self, int(self.len_password.text()))
+        gen_password = API.generation_password_api(self, int(self.count_password_generate.text()))
         if gen_password:
-            self.password_input.setText(gen_password)
+            self.password.setText(gen_password)
 
 #Класс диалогового окна импорта паролей
 class DialogImportPasswords(Ui_Dialog, QDialog):
