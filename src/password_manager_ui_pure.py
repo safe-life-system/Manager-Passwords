@@ -322,8 +322,13 @@ class PasswordTableView(QTableView):
         self._user_model = None
         self._action_model: Optional[ActionColumnProxyModel] = None
         self.action_column = 6
-        self.action_column_width = 370
+        self.action_column_width = 400
         self.visible_password_record_ids = set()
+
+        # Пока пользователь сам не потянул колонки мышью,
+        # таблица будет автоматически красиво заполнять доступную ширину.
+        self._auto_fit_columns = True
+        self._applying_column_layout = False
 
         self.base_actions = (
             ActionButtonSpec("copy_login", "Логин", 58),
@@ -335,13 +340,17 @@ class PasswordTableView(QTableView):
 
         self.setMouseTracking(True)
         self.setAlternatingRowColors(False)
-        self.setShowGrid(False)
+        self.setShowGrid(True)
         self.setWordWrap(False)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setSortingEnabled(False)
         self.setFrameShape(QFrame.Shape.NoFrame)
+
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         self.verticalHeader().setVisible(False)
         self.verticalHeader().setDefaultSectionSize(52)
         self.verticalHeader().setMinimumSectionSize(52)
@@ -349,9 +358,13 @@ class PasswordTableView(QTableView):
         header = self.horizontalHeader()
         header.setHighlightSections(False)
         header.setSectionsClickable(True)
+        header.setSectionsMovable(False)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        header.setMinimumSectionSize(70)
-        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(90)
+        header.setStretchLastSection(True)
+
+        # Если пользователь сам потянул колонку — больше не сбрасываем ширину автоматически.
+        header.sectionResized.connect(self._on_section_resized)
 
         self.setItemDelegateForColumn(self.PASSWORD_COLUMN, PasswordMaskDelegate(self, self))
 
@@ -384,34 +397,157 @@ class PasswordTableView(QTableView):
         """Возвращает UI-обёртку с колонкой действий."""
         return self._action_model
 
+    def _on_section_resized(self, logical_index: int, old_size: int, new_size: int):
+        """
+        Qt вызывает этот метод, когда меняется ширина колонки.
+
+        Если ширину меняет наш автоподгонщик — ничего не делаем.
+        Если ширину меняет пользователь мышью — отключаем автоподгонку,
+        чтобы таблица не сбрасывала его настройки.
+        """
+        if self._applying_column_layout:
+            return
+
+        if logical_index not in (self.ID_COLUMN, self.action_column):
+            self._auto_fit_columns = False
+
+
+    def reset_column_widths(self):
+        """
+        Вернуть аккуратную ширину колонок по умолчанию.
+
+        Можно вызвать вручную:
+            self.table_passwords.reset_column_widths()
+        """
+        self._auto_fit_columns = True
+        self.fit_columns_to_view()
+
+
+    def fit_columns_to_view(self):
+        """
+        Расставляет стартовые ширины колонок так, чтобы таблица выглядела нормально:
+        - без серой пустоты справа;
+        - с фиксированной колонкой действий;
+        - с нормальными пропорциями текстовых колонок.
+        """
+        model = self.model()
+        if model is None:
+            return
+
+        if model.columnCount() <= self.PASSWORD_COLUMN:
+            return
+
+        visible_columns = [
+            self.RECORD_NAME_COLUMN,
+            self.SITE_COLUMN,
+            self.LOGIN_COLUMN,
+            self.EMAIL_COLUMN,
+            self.PASSWORD_COLUMN,
+        ]
+
+        min_widths = {
+            self.RECORD_NAME_COLUMN: 150,
+            self.SITE_COLUMN: 220,
+            self.LOGIN_COLUMN: 170,
+            self.EMAIL_COLUMN: 210,
+            self.PASSWORD_COLUMN: 140,
+        }
+
+        weights = {
+            self.RECORD_NAME_COLUMN: 1.2,
+            self.SITE_COLUMN: 1.7,
+            self.LOGIN_COLUMN: 1.3,
+            self.EMAIL_COLUMN: 1.6,
+            self.PASSWORD_COLUMN: 1.0,
+        }
+
+        viewport_width = self.viewport().width()
+        available_width = max(0, viewport_width - self.action_column_width)
+
+        min_total = sum(min_widths.values())
+
+        self._applying_column_layout = True
+        try:
+            if self.action_column < model.columnCount():
+                self.setColumnWidth(self.action_column, self.action_column_width)
+
+            if available_width <= min_total:
+                for column in visible_columns:
+                    self.setColumnWidth(column, min_widths[column])
+                return
+
+            extra = available_width - min_total
+            weight_total = sum(weights.values())
+
+            used_width = 0
+            for column in visible_columns[:-1]:
+                width = min_widths[column] + int(extra * weights[column] / weight_total)
+                self.setColumnWidth(column, width)
+                used_width += width
+
+            # Последняя обычная колонка забирает остаток,
+            # чтобы не появлялась пустая зона справа из-за округлений.
+            last_column = visible_columns[-1]
+            last_width = max(
+                min_widths[last_column],
+                available_width - used_width,
+            )
+            self.setColumnWidth(last_column, last_width)
+
+        finally:
+            self._applying_column_layout = False
+    
     def configure_columns(self):
-        """Настраивает растягивание колонок так, чтобы таблица занимала всю ширину."""
+        """
+        Настраивает колонки таблицы.
+
+        Обычные колонки можно растягивать мышью.
+        Колонка "Действия" фиксированная.
+        При первом отображении таблица сама красиво заполняет ширину окна.
+        """
         model = self.model()
         if model is None:
             return
 
         header = self.horizontalHeader()
-        header.setStretchLastSection(False)
+        header.setStretchLastSection(True)
+        header.setSectionsMovable(False)
+        header.setMinimumSectionSize(90)
 
         # ID нужен логике, но пользователю не нужен.
         if model.columnCount() > self.ID_COLUMN:
             self.setColumnHidden(self.ID_COLUMN, True)
 
-        # Все основные текстовые колонки растягиваются.
-        for column in range(model.columnCount()):
-            if column == self.ID_COLUMN:
-                continue
-            if column == self.action_column:
-                header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
-                self.setColumnWidth(column, self.action_column_width)
-            else:
-                header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
+        # ВАЖНО:
+        # Пока мы сами настраиваем ширины, sectionResized не должен считать,
+        # что это пользователь руками потянул колонку.
+        self._applying_column_layout = True
+
+        try:
+            for column in range(model.columnCount()):
+                if column == self.ID_COLUMN:
+                    continue
+
+                if column == self.action_column:
+                    header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+                    self.setColumnWidth(column, self.action_column_width)
+                else:
+                    header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+        finally:
+            self._applying_column_layout = False
+
+        if self._auto_fit_columns:
+            self.fit_columns_to_view()
 
         self.resizeRowsToContents()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.configure_columns()
+
+        # Пока пользователь сам не менял ширину колонок,
+        # окно будет красиво подгонять таблицу под размер.
+        if self._auto_fit_columns:
+            self.fit_columns_to_view()
 
     def action_specs_for_row(self, row: int):
         record_id = self.record_id_for_row(row)
@@ -429,18 +565,13 @@ class PasswordTableView(QTableView):
     def action_button_rects(self, cell_rect: QRect, row: int):
         """Возвращает прямоугольники кнопок внутри ячейки действий."""
         gap = 8
-        left_padding = 10
-        right_padding = 10
 
         specs = self.action_specs_for_row(row)
         total_width = sum(spec.width for spec in specs) + gap * (len(specs) - 1)
-        available_width = cell_rect.width() - left_padding - right_padding
 
-        # Если места достаточно, выравниваем кнопки слева внутри колонки.
-        # Если места мало, начинаем от левого края и кнопки всё равно остаются кликабельными.
-        x = cell_rect.left() + left_padding
-        if available_width > total_width + 10:
-            x = cell_rect.left() + left_padding
+        # Центруем кнопки внутри колонки "Действия".
+        # Так они не будут липнуть к левой границе и не будут залезать вправо.
+        x = cell_rect.left() + max(8, (cell_rect.width() - total_width) // 2)
 
         y = cell_rect.top() + 9
         height = max(30, cell_rect.height() - 18)
@@ -838,7 +969,7 @@ class Ui_MainWindow(object):
                 color: #F4F7FF;
                 border: none;
                 border-radius: 14px;
-                gridline-color: transparent;
+                gridline-color: #1B2A40;
                 selection-background-color: #223C66;
                 selection-color: #FFFFFF;
                 outline: 0;
@@ -846,7 +977,8 @@ class Ui_MainWindow(object):
 
             QTableView#table_passwords::item {
                 background: #111823;
-                border: none;
+                border-right: 1px solid #162235;
+                border-bottom: 1px solid #0E1623;
                 padding: 10px;
             }
 
@@ -859,9 +991,15 @@ class Ui_MainWindow(object):
                 background: #1A2333;
                 color: #CFE0FF;
                 border: none;
+                border-right: 1px solid #2E3B52;
                 border-bottom: 1px solid #2A364B;
                 padding: 12px 10px;
                 font-weight: 700;
+            }
+
+            QHeaderView::section:hover {
+                background: #202B3E;
+                border-right: 1px solid #5E8DFF;
             }
 
             QHeaderView::section:first {
