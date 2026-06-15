@@ -1,4 +1,4 @@
-from src.log_in_interface import Ui_log_in
+from src.auth_window_ui import Ui_AuthWindow
 #from src.main_window_interface import Ui_MainWindow
 from src.password_manager_ui_pure import Ui_MainWindow
 from src.dialog_add_password_interface import Ui_Add_password
@@ -16,30 +16,39 @@ import json
 import os
 
 #Класс функциональности интерфейса регистрации и авторизации
-class LogInApp(Ui_log_in, QMainWindow):
+class LogInApp(Ui_AuthWindow, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
-        self.registration.clicked.connect(self.registration_button)
-        self.log_in_2.clicked.connect(self.log_in_button)
+        self.registration_button.clicked.connect(self.registration_method)
+        self.login_button.clicked.connect(self.log_in_method)
+        self.show_passwords.toggled.connect(self.set_passwords_visible)
         
     #Взаимодействие функции регистрации с интерфейсом через API
-    def registration_button(self):
-        if self.password_input_1.text() == self.password_input_2.text():
-            if API.registration_api(self, user_name=self.login_input.text(), user_password=self.password_input_1.text()):
+    def registration_method(self):
+        if self.user_password.text() == self.user_password_repeat.text():
+            if API.registration_api(self, user_name=self.get_login_text(), user_password=self.user_password.text()):
                 self.swap_mainwindow()
+            else:
+                self.set_status("Пользователь уже зарегистрирован", error=True)
+        else:
+            self.set_status("Повторный пароль неверный", error=True)
     
     #Взаимодействие функции входа в программу с интерфейсом через API
-    def log_in_button(self):
-        if self.password_input_1.text() == self.password_input_2.text():
-            if API.log_in_api(self, user_name=self.login_input.text(), user_password=self.password_input_1.text()):
+    def log_in_method(self):
+        if self.user_password.text() == self.user_password_repeat.text():
+            if API.log_in_api(self, user_name=self.get_login_text(), user_password=self.user_password.text()):
                 self.swap_mainwindow()
+            else:
+                self.set_status("Логин не верный или пользователя не существует", error=True)
+        else:
+            self.set_status("Повторный пароль неверный", error=True)
     
     #Функция перехода на основное окно
     def swap_mainwindow(self):
-        API.set_password_cache_api(self, "PASSWORD_LOG_IN", self.password_input_1.text())
+        API.set_password_cache_api(self, "PASSWORD_LOG_IN", self.user_password.text())
         self.close()
-        self.window = MainWindow(self.login_input.text())
+        self.window = MainWindow(self.get_login_text())
         API.keys_generation_api(self, API.get_password_cache_api(self,  name_service="PASSWORD_LOG_IN"))
         self.window.show()
 
