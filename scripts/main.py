@@ -2,8 +2,7 @@ from src.auth_window_ui import Ui_AuthWindow
 #from src.main_window_interface import Ui_MainWindow
 from src.password_manager_ui_pure import Ui_MainWindow
 from src.add_password_dialog_ui import Ui_DialogAddPassword
-from src.dialog_csv_import_interface import Ui_Dialog
-from src.dialog_csv_export_interface import Export_Ui_Dialog
+from src.csv_dialogs_ui import Ui_DialogImportPasswords, Ui_DialogExportPasswords
 from PySide6.QtWidgets import QMainWindow, QDialog, QFileDialog, QCheckBox
 from src.api import API
 from src.table_model import PasswordsTabel, MultiIndexFilter
@@ -173,18 +172,24 @@ class DialogAddPassword(Ui_DialogAddPassword, QDialog):
             self.password.setText(gen_password)
 
 #Класс диалогового окна импорта паролей
-class DialogImportPasswords(Ui_Dialog, QDialog):
+class DialogImportPasswords(Ui_DialogImportPasswords, QDialog):
     #Сигнал сохранения записи в базе данных
     saved_table_passwords_csv = Signal(bool)
     def __init__(self):
         super().__init__()
         self.setupUi(self)
+        with open("config\config.json", "r") as config:
+            config_file = json.load(config)
         try:
-            self.buttonBox.accepted.disconnect()
-        except TypeError:
-            pass
-        self.button_dir.clicked.connect(self.open_dialog_file)
-        self.buttonBox.accepted.connect(self.import_csv_passwords)
+            csv_path = config_file["path"]["default_csv_path"]
+            self.set_file_path(csv_path) 
+        except:
+            config_file["path"]["default_csv_path"] = os.path.dirname(os.path.abspath(__file__))
+            with open("config\config.json", "w") as config:
+                json.dump(config_file, config, indent=4)
+        self.browse_button.clicked.connect(self.open_dialog_file)
+        self.cancel_button.clicked.connect(self.reject)
+        self.ok_button.clicked.connect(self.import_csv_passwords)
     
     #Метод открытия окна файлового менеджера    
     def open_dialog_file(self):
@@ -199,35 +204,40 @@ class DialogImportPasswords(Ui_Dialog, QDialog):
                 json.dump(config_file, config, indent=4)
                 
         csv_file, _ = QFileDialog.getOpenFileName(self, "Выберите CSV файлы", csv_path, "CSV файлы (*.csv)")
-        self.name_dir.setText(csv_file)
+        self.file_path.setText(csv_file)
         with open("config\config.json", "w") as config:
             config_file["path"]["default_csv_path"] = os.path.dirname(os.path.abspath(csv_file))
             json.dump(config_file, config, indent=4)
     
     #Метод вызывающий функцию сериализации и сохроняющий все данные в таблице
     def import_csv_passwords(self):
-        if self.name_dir.text():
-            passwords_csv = API.import_csv_passwords_api(self, self.name_dir.text())
+        if self.file_path.text():
+            passwords_csv = API.import_csv_passwords_api(self, self.file_path.text())
             for value in passwords_csv:
                 API.add_password_api(self, name=value["name_sit"], name_sit=value["url"], login=value["username"], mail=API.encryption_data_api(self, value["username"], API.get_password_cache_api(self, "PASSWORD_LOG_IN")), password=API.encryption_data_api(self, value["password"], API.get_password_cache_api(self, "PASSWORD_LOG_IN")))
             self.saved_table_passwords_csv.emit(True)
             self.accept()
             self.saved_table_passwords_csv.emit(False)
         else:
-            self.name_dir.setStyleSheet("border: 1px solid red;")
+            self.file_path.setStyleSheet("border: 1px solid red;")
 
 #Класс диалогового окна экспорта csv файла
-class DialogExportPasswords(Export_Ui_Dialog, QDialog):
+class DialogExportPasswords(Ui_DialogExportPasswords, QDialog):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
+        with open("config\config.json", "r") as config:
+            config_file = json.load(config)
         try:
-            self.buttonBox.accepted.disconnect()
-        except TypeError:
-            pass
-        
-        self.button_dir.clicked.connect(self.open_dialog_file)
-        self.buttonBox.accepted.connect(self.export_csv_passwords)
+            csv_path = config_file["path"]["default_csv_path"]
+            self.set_file_path(csv_path) 
+        except:
+            config_file["path"]["default_csv_path"] = os.path.dirname(os.path.abspath(__file__))
+            with open("config\config.json", "w") as config:
+                json.dump(config_file, config, indent=4)
+        self.browse_button.clicked.connect(self.open_dialog_file)
+        self.cancel_button.clicked.connect(self.reject)
+        self.ok_button.clicked.connect(self.export_csv_passwords)
     
     #Метод открытия окна файлового менеджера
     def open_dialog_file(self):
@@ -243,12 +253,12 @@ class DialogExportPasswords(Export_Ui_Dialog, QDialog):
                 json.dump(config_file, config, indent=4)
                  
         csv_file, _ = QFileDialog.getOpenFileName(self, "Выберите CSV файлы", csv_path, "CSV файлы (*.csv)")
-        self.name_dir.setText(csv_file)
+        self.file_path.setText(csv_file)
         with open("config\config.json", "w") as config:
             config_file["path"]["default_csv_path"] = os.path.dirname(os.path.abspath(csv_file))
             json.dump(config_file, config, indent=4)
     
     #Метод вызова функции экспорта
     def export_csv_passwords(self):
-        API.export_csv_passwords_api(self, self.name_dir.text())
+        API.export_csv_passwords_api(self, self.file_path.text())
         self.accept()
